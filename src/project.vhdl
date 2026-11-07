@@ -4,7 +4,7 @@
 -- Lagrade tillståndsbitar (vippor):
 --   hpos  10 bitar  VGA-kolumn  (0..799)
 --   vpos  10 bitar  VGA-rad     (0..524)
---   dist   8 bitar  världens position, +1 per bildruta.
+--   distance   8 bitar  världens position, +1 per bildruta.
 --                   Efter game over återanvänds den som timer.
 --   air    4 bitar  0 = på marken, 1..14 = i luften, 15 = död (game over)
 --   ------------------
@@ -555,7 +555,7 @@ architecture rtl of tt_um_bouncing_ball is
   ---------------------------------------------------------------------------
   signal hpos : unsigned(9 downto 0);
   signal vpos : unsigned(9 downto 0);
-  signal dist : unsigned(7 downto 0);
+  signal distance : unsigned(7 downto 0);
   signal air  : unsigned(3 downto 0);
 
   ---------------------------------------------------------------------------
@@ -611,7 +611,7 @@ begin
     variable duck_btn : boolean;
   begin
     if rst_n = '0' then
-      dist <= (others => '0');
+      distance <= (others => '0');
       air  <= (others => '0');
     elsif rising_edge(clk) then
       jump_btn := ui_in(1) = '1';
@@ -619,16 +619,16 @@ begin
       if ui_in(0) = '0' then
         if frame_tick = '1' then
           if air = AIR_DEAD then
-            -- Game over: dist räknar tiden. Hopp startar om efter en paus.
-            if dist /= 255 then
-              dist <= dist + 1;
+            -- Game over: distance räknar tiden. Hopp startar om efter en paus.
+            if distance /= 255 then
+              distance <= distance + 1;
             end if;
-            if jump_btn and dist >= RESTART_DELAY then
-              dist <= (others => '0');
+            if jump_btn and distance >= RESTART_DELAY then
+              distance <= (others => '0');
               air  <= (others => '0');
             end if;
           else
-            dist <= dist + 1;
+            distance <= distance + 1;
             if air = 0 then
               if jump_btn then
                 air <= to_unsigned(1, 4);
@@ -637,7 +637,7 @@ begin
               -- Släppt hoppknapp (eller ducka) på väg upp: spegla fasen så
               -- att figuren vänder i samma höjd -> lägre hopp / snabbfall.
               air <= 15 - air;
-            elsif dist(0) = '1' or duck_btn then
+            elsif distance(0) = '1' or duck_btn then
               if air = 14 then
                 air <= (others => '0');
               else
@@ -647,7 +647,7 @@ begin
           end if;
         elsif hit = '1' and air /= AIR_DEAD then
           air  <= to_unsigned(AIR_DEAD, 4);
-          dist <= (others => '0');
+          distance <= (others => '0');
         end if;
       end if;
     end if;
@@ -656,7 +656,7 @@ begin
   ---------------------------------------------------------------------------
   -- Pixelgrafik, kollision och ljud (helt kombinatoriskt)
   ---------------------------------------------------------------------------
-  pixel_colour : process(hpos, vpos, dist, air, ui_in)
+  pixel_colour : process(hpos, vpos, distance, air, ui_in)
     variable vis      : boolean;
     variable lx       : unsigned(8 downto 0);
     variable ly       : unsigned(7 downto 0);
@@ -723,7 +723,7 @@ begin
 
     -- Marken och bergen står still under game over
     if alive then
-      scroll := dist;
+      scroll := distance;
     else
       scroll := (others => '0');
     end if;
@@ -731,7 +731,7 @@ begin
     -------------------------------------------------------------------------
     -- Spelarfiguren (16x16) på x = 32..47
     -------------------------------------------------------------------------
-    h    := JUMP_H(to_integer(air & dist(0)));
+    h    := JUMP_H(to_integer(air & distance(0)));
     prow := resize(ly, 9) + resize(h, 9) - PLAYER_TOP;
     pr   := prow(3 downto 0);
     pc   := lx(3 downto 0);
@@ -741,7 +741,7 @@ begin
     elsif ui_in(3) = '1' then
       pose := "11";
     else
-      pose := "0" & dist(2);
+      pose := "0" & distance(2);
     end if;
     prowbits := player_row(ui_in(2), pose, pr);
     p_on := in_pbox and prowbits(15 - to_integer(pc)) = '1';
@@ -805,9 +805,9 @@ begin
           end if;
           if tx < 16 and hyi >= bb and hyi < bb + 8 then
             br := bb + 7 - hyi;
-            o_on   := BIRD_ROM(to_integer(dist(3) & to_unsigned(br, 3)))(15 - tx) = '1';
+            o_on   := BIRD_ROM(to_integer(distance(3) & to_unsigned(br, 3)))(15 - tx) = '1';
             o_bird := true;
-            o_eye  := tx = 2 and ((dist(3) = '0' and br = 3) or (dist(3) = '1' and br = 2));
+            o_eye  := tx = 2 and ((distance(3) = '0' and br = 3) or (distance(3) = '1' and br = 2));
           end if;
       end case;
     end if;
@@ -821,7 +821,7 @@ begin
       -----------------------------------------------------------------------
       -- Himmel (vit blixt när man dör), stjärnor, sol/måne
       -----------------------------------------------------------------------
-      if (not alive) and dist < 3 then
+      if (not alive) and distance < 3 then
         col := C_WHITE;
       elsif night then
         if ly >= SKY_BAND_Y then
@@ -834,7 +834,7 @@ begin
         sh := (lx(8 downto 3) + sy + (sy(4 downto 0) & '0'))
               xor ('0' & lx(8 downto 4)) xor (sy(3 downto 0) & "00");
         if lx(2 downto 0) = "011" and ly(2 downto 0) = "101" and ly < SKY_BAND_Y and
-           (sh = 37 or sh = 11 or (sh = 50 and dist(5) = '1')) then
+           (sh = 37 or sh = 11 or (sh = 50 and distance(5) = '1')) then
           col := C_WHITE;
         end if;
       else
@@ -865,7 +865,7 @@ begin
       -----------------------------------------------------------------------
       -- Moln (halva markfarten, fortsätter driva under game over)
       -----------------------------------------------------------------------
-      cx := lx + (dist & '0');
+      cx := lx + (distance & '0');
       if cx(6 downto 5) = "01" then
         cyy := ly - CLOUD_Y(to_integer(cx(8 downto 7)));
         if cyy < 10 then
@@ -991,7 +991,7 @@ begin
         end if;
         u := to_integer(lx) - 153;
         v := to_integer(ly) - 104;
-        if dist >= RESTART_DELAY and dist(4) = '1' and u >= 0 and u < 14 and v >= 0 and v < 16 then
+        if distance >= RESTART_DELAY and distance(4) = '1' and u >= 0 and u < 14 and v >= 0 and v < 16 then
           if iabs(2 * v - 15) <= 15 - u then
             if night then
               col := C_WHITE;
@@ -1026,14 +1026,14 @@ begin
           snd <= vpos(4);
         elsif air = 3 then
           snd <= vpos(3);
-        elsif dist(7 downto 2) = 0 then
+        elsif distance(7 downto 2) = 0 then
           snd <= vpos(2);                 -- nytt varv på banan
         end if;
-      elsif dist < 8 then
+      elsif distance < 8 then
         snd <= vpos(4);                   -- krock: fallande ton
-      elsif dist < 16 then
+      elsif distance < 16 then
         snd <= vpos(5);
-      elsif dist < 24 then
+      elsif distance < 24 then
         snd <= vpos(6);
       end if;
     end if;
