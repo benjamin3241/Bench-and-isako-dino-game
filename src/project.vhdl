@@ -142,6 +142,7 @@ architecture rtl of tt_um_bouncing_ball is
   signal distance_stage1:unsigned(7 downto 0); signal air_stage1:unsigned(3 downto 0);
   signal ui_in_stage1:std_logic_vector(7 downto 0);
   signal hsync_stage1,vsync_stage1:std_logic;
+  signal early_bg_comb,early_bg_q:rgb_t;
   signal base_rgb_comb,object_rgb_comb,player_rgb_comb,late_rgb_comb:rgb_t;
   signal object_on_comb,player_on_comb,player_eye_comb,late_on_comb:std_logic;
   signal base_rgb_q,object_rgb_q,player_rgb_q,late_rgb_q:rgb_t;
@@ -162,6 +163,68 @@ begin
       if h_end='1' then hpos<=(others=>'0'); if vpos=V_TOTAL-1 then vpos<=(others=>'0'); else vpos<=vpos+1; end if;
       else hpos<=hpos+1; end if;
     end if;
+  end process;
+
+  -- First half of pixel rendering: sky, stars/sun/moon, and clouds.
+  -- This is registered alongside the counter coordinates before the
+  -- remaining terrain and sprite composition.
+  early_background:process(hpos,vpos,distance,air,ui_in)
+    variable vis,alive,night:boolean;
+    variable lx:unsigned(8 downto 0); variable ly:unsigned(7 downto 0);
+    variable col:rgb_t;
+    variable sh,sy:unsigned(5 downto 0);
+    variable dxi:integer range -512 to 511; variable dyi:integer range -256 to 255;
+    variable ady,ady2,disc_hw,disc2_hw:integer range 0 to 31;
+    variable in_disc,in_disc2:boolean;
+    variable cx:unsigned(8 downto 0); variable cyy:unsigned(7 downto 0);
+    variable ctx:integer range 0 to 31; variable cty:integer range 0 to 15;
+  begin
+    vis:=hpos>=H_ACTIVE_START and hpos<H_ACTIVE_END and
+         vpos>=V_ACTIVE_START and vpos<V_ACTIVE_END;
+    if vis then
+      lx:=resize(shift_right(hpos-to_unsigned(H_ACTIVE_START,10),1),9);
+      ly:=resize(shift_right(vpos-to_unsigned(V_ACTIVE_START,10),1),8);
+    else
+      lx:=(others=>'0');ly:=(others=>'0');
+    end if;
+    alive:=air/=AIR_DEAD;night:=ui_in(6)='1';col:=C_BLACK;
+    ady:=0;ady2:=0;disc_hw:=0;disc2_hw:=0;in_disc:=false;in_disc2:=false;
+    if vis then
+      if not alive and distance<3 then col:=C_WHITE;
+      elsif night then
+        if ly>=SKY_BAND_Y then col:=C_N_SKY2;else col:=C_N_SKY;end if;
+        sy:='0' & ly(7 downto 3);
+        sh:=(lx(8 downto 3)+sy+(sy(4 downto 0)&'0')) xor ('0'&lx(8 downto 4)) xor (sy(3 downto 0)&"00");
+        if lx(2 downto 0)="011" and ly(2 downto 0)="101" and ly<SKY_BAND_Y and
+          (sh=37 or sh=11 or (sh=50 and distance(5)='1')) then col:=C_WHITE;end if;
+      else col:=C_SKY;end if;
+
+      dxi:=to_integer(lx)-272;dyi:=to_integer(ly)-32;
+      if dxi>-16 and dxi<16 and dyi>-16 and dyi<16 then
+        if dyi<0 then ady:=-dyi;else ady:=dyi;end if;
+        if dyi< -3 then ady2:=-(dyi+3);else ady2:=dyi+3;end if;
+        disc_hw:=to_integer(CIRCLE_HW(ady));disc2_hw:=to_integer(CIRCLE_HW(ady2));
+        in_disc:=dxi> -disc_hw and dxi<disc_hw;
+        in_disc2:=(dxi-6)> -disc2_hw and (dxi-6)<disc2_hw;
+        if in_disc and (not night or not in_disc2) then
+          if night then col:=C_N_MOON;else col:=C_SUN;end if;
+        end if;
+      end if;
+
+      cx:=lx+(distance & '0');
+      if cx(6 downto 5)="01" then
+        cyy:=ly-CLOUD_Y(to_integer(cx(8 downto 7)));
+        if cyy<10 then
+          ctx:=to_integer(cx(4 downto 0));cty:=to_integer(cyy(3 downto 0));
+          if (cty>=6 and ctx>=1 and ctx<=30 and not(cty=9 and (ctx<3 or ctx>28))) or
+             (cty>=3 and cty<6 and ctx>=6 and ctx<=25) or
+             (cty<3 and ctx>=10 and ctx<=21 and not(cty=0 and (ctx<12 or ctx>19))) then
+            if night then col:=C_N_CLOUD;else col:=C_CLOUD;end if;
+          end if;
+        end if;
+      end if;
+    end if;
+    early_bg_comb<=col;
   end process;
 
   game_logic:process(clk,rst_n) variable jump_btn,duck_btn:boolean;
@@ -186,7 +249,7 @@ begin
     end if;
   end process;
 
-  pixel_colour:process(hpos_stage1,vpos_stage1,distance_stage1,air_stage1,ui_in_stage1)
+  pixel_colour:process(hpos_stage1,vpos_stage1,distance_stage1,air_stage1,ui_in_stage1,early_bg_q)
     variable vis,alive,night:boolean; variable lx:unsigned(8 downto 0); variable ly:unsigned(7 downto 0);
     variable col,obj_col,player_col,late_col:rgb_t; variable late_on:boolean;
     variable scroll:unsigned(7 downto 0);
@@ -196,10 +259,7 @@ begin
     variable wx:unsigned(9 downto 0); variable entry:std_logic_vector(5 downto 0);
     variable kind:integer range 0 to 7; variable tx:integer range 0 to 31; variable hyi:integer range 0 to 255;
     variable bb:integer range 0 to 15; variable br:integer range 0 to 7; variable o_on,o_bird,o_eye:boolean;
-    variable sh,sy:unsigned(5 downto 0); variable dxi:integer range -512 to 511; variable dyi:integer range -256 to 255;
-    variable ady,ady2,disc_hw,disc2_hw:integer range 0 to 31; variable in_disc,in_disc2:boolean;
-    variable cx:unsigned(8 downto 0); variable cyy:unsigned(7 downto 0); variable ctx:integer range 0 to 31;
-    variable cty:integer range 0 to 15; variable hx:unsigned(7 downto 0); variable tri1:unsigned(5 downto 0);
+    variable hx:unsigned(7 downto 0); variable tri1:unsigned(5 downto 0);
     variable tri2:unsigned(3 downto 0); variable hill_top:unsigned(7 downto 0); variable gh:unsigned(5 downto 0);
     variable tx9:unsigned(8 downto 0); variable tcol:integer range 0 to 7; variable glyph:std_logic_vector(4 downto 0);
     variable u:integer range -512 to 511; variable v:integer range -256 to 255; variable play_y2:integer range -31 to 31;
@@ -215,7 +275,7 @@ begin
     end if;
     alive:=air_stage1/=AIR_DEAD; night:=ui_in_stage1(6)='1'; hit<='0';snd<='0';col:=C_BLACK;
     obj_col:=C_BLACK;player_col:=C_BLACK;late_col:=C_BLACK;late_on:=false;
-    ady:=0;ady2:=0;disc_hw:=0;disc2_hw:=0;in_disc:=false;in_disc2:=false;play_y2:=0;
+    play_y2:=0;
     if alive then scroll:=distance_stage1; else scroll:=(others=>'0'); end if;
 
     h:=JUMP_H(to_integer(air_stage1 & distance_stage1(0))); prow:=resize(ly,9)+resize(h,9)-PLAYER_TOP;
@@ -256,38 +316,7 @@ begin
     if vis and alive and p_on and o_on and ui_in_stage1(0)='0' then hit<='1'; end if;
 
     if vis then
-      if not alive and distance_stage1<3 then col:=C_WHITE;
-      elsif night then
-        if ly>=SKY_BAND_Y then col:=C_N_SKY2; else col:=C_N_SKY; end if;
-        sy:='0' & ly(7 downto 3);
-        sh:=(lx(8 downto 3)+sy+(sy(4 downto 0)&'0')) xor ('0'&lx(8 downto 4)) xor (sy(3 downto 0)&"00");
-        if lx(2 downto 0)="011" and ly(2 downto 0)="101" and ly<SKY_BAND_Y and
-          (sh=37 or sh=11 or (sh=50 and distance_stage1(5)='1')) then col:=C_WHITE; end if;
-      else col:=C_SKY; end if;
-
-      dxi:=to_integer(lx)-272;dyi:=to_integer(ly)-32;
-      if dxi>-16 and dxi<16 and dyi>-16 and dyi<16 then
-        if dyi<0 then ady:=-dyi; else ady:=dyi; end if;
-        if dyi< -3 then ady2:=-(dyi+3); else ady2:=dyi+3; end if;
-        disc_hw:=to_integer(CIRCLE_HW(ady));disc2_hw:=to_integer(CIRCLE_HW(ady2));
-        in_disc:=dxi> -disc_hw and dxi<disc_hw;
-        in_disc2:=(dxi-6)> -disc2_hw and (dxi-6)<disc2_hw;
-        if in_disc and (not night or not in_disc2) then
-          if night then col:=C_N_MOON; else col:=C_SUN; end if;
-        end if;
-      end if;
-
-      cx:=lx+(distance_stage1 & '0');
-      if cx(6 downto 5)="01" then cyy:=ly-CLOUD_Y(to_integer(cx(8 downto 7)));
-        if cyy<10 then ctx:=to_integer(cx(4 downto 0));cty:=to_integer(cyy(3 downto 0));
-          if (cty>=6 and ctx>=1 and ctx<=30 and not(cty=9 and (ctx<3 or ctx>28))) or
-             (cty>=3 and cty<6 and ctx>=6 and ctx<=25) or
-             (cty<3 and ctx>=10 and ctx<=21 and not(cty=0 and (ctx<12 or ctx>19))) then
-            if night then col:=C_N_CLOUD; else col:=C_CLOUD; end if;
-          end if;
-        end if;
-      end if;
-
+      col:=early_bg_q;
       hx:=lx(7 downto 0)+scroll;if hx(6)='1' then tri1:=not hx(5 downto 0);else tri1:=hx(5 downto 0);end if;
       if hx(4)='1' then tri2:=not hx(3 downto 0);else tri2:=hx(3 downto 0);end if;
       hill_top:=to_unsigned(184,8)-tri1(5 downto 2)-tri2(3 downto 2);
@@ -365,6 +394,7 @@ begin
       hpos_stage1<=(others=>'0');vpos_stage1<=(others=>'0');
       distance_stage1<=(others=>'0');air_stage1<=(others=>'0');ui_in_stage1<=(others=>'0');
       hsync_stage1<='0';vsync_stage1<='0';
+      early_bg_q<=C_BLACK;
       base_rgb_q<=C_BLACK;object_rgb_q<=C_BLACK;player_rgb_q<=C_BLACK;late_rgb_q<=C_BLACK;
       object_on_q<='0';player_on_q<='0';player_eye_q<='0';late_on_q<='0';
       hsync_q<='0';vsync_q<='0';snd_q<='0';
@@ -373,6 +403,7 @@ begin
       hpos_stage1<=hpos;vpos_stage1<=vpos;
       distance_stage1<=distance;air_stage1<=air;ui_in_stage1<=ui_in;
       hsync_stage1<=hsync;vsync_stage1<=vsync;
+      early_bg_q<=early_bg_comb;
       base_rgb_q<=base_rgb_comb;object_rgb_q<=object_rgb_comb;
       player_rgb_q<=player_rgb_comb;late_rgb_q<=late_rgb_comb;
       object_on_q<=object_on_comb;player_on_q<=player_on_comb;
