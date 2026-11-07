@@ -568,6 +568,10 @@ architecture rtl of tt_um_bouncing_ball is
   signal hit        : std_logic;
   signal snd        : std_logic;
   signal rgb        : rgb_t;
+  -- Samma namn som i originalkoden (vissa VGA-visare läser r, g, b direkt)
+  signal r          : std_logic_vector(1 downto 0);
+  signal g          : std_logic_vector(1 downto 0);
+  signal b          : std_logic_vector(1 downto 0);
 
 begin
 
@@ -1044,7 +1048,10 @@ begin
   --   uo_out(7) = HSYNC, (6) = B0, (5) = G0, (4) = R0,
   --   uo_out(3) = VSYNC, (2) = B1, (1) = G1, (0) = R1
   ---------------------------------------------------------------------------
-  uo_out <= hsync & rgb(0) & rgb(2) & rgb(4) & vsync & rgb(1) & rgb(3) & rgb(5);
+  r <= rgb(5 downto 4);
+  g <= rgb(3 downto 2);
+  b <= rgb(1 downto 0);
+  uo_out <= hsync & b(0) & g(0) & r(0) & vsync & b(1) & g(1) & r(1);
 
   -- Ljud på uio_out(7), övriga dubbelriktade pinnar oanvända
   uio_out <= snd & "0000000";
