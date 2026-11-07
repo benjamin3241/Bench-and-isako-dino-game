@@ -50,13 +50,16 @@ architecture rtl of tt_um_bouncing_ball is
   -- VGA 640x480. Den synliga ytan ligger först (hpos 0..639, vpos 0..479),
   -- då blir skärmkoordinaten = räknaren och inga subtraktioner behövs.
   ---------------------------------------------------------------------------
-  constant H_ACTIVE     : integer := 640;
-  constant H_SYNC_START : integer := 656;
-  constant H_SYNC_END   : integer := 752;
+  -- "Sync först": HSYNC på hpos 0..95, bakre kant 96..143, bild 144..783,
+  -- främre kant 784..799. VSYNC på vpos 0..1, bild på rad 35..514.
+  -- (Samma som VHDLive:s exempel och originalkoden.)
+  constant H_SYNC       : integer := 96;
+  constant H_ACT_START  : integer := 144;
+  constant H_ACT_END    : integer := 784;
   constant H_TOTAL      : integer := 800;
-  constant V_ACTIVE     : integer := 480;
-  constant V_SYNC_START : integer := 490;
-  constant V_SYNC_END   : integer := 492;
+  constant V_SYNC       : integer := 2;
+  constant V_ACT_START  : integer := 35;
+  constant V_ACT_END    : integer := 515;
   constant V_TOTAL      : integer := 525;
 
   ---------------------------------------------------------------------------
@@ -579,17 +582,15 @@ begin
   -- VGA-räknare och synk
   ---------------------------------------------------------------------------
   h_end      <= '1' when hpos = H_TOTAL - 1 else '0';
-  frame_tick <= '1' when hpos = H_TOTAL - 1 and vpos = V_ACTIVE - 1 else '0';
-  hsync      <= '0' when hpos >= H_SYNC_START and hpos < H_SYNC_END else '1';
-  vsync      <= '0' when vpos >= V_SYNC_START and vpos < V_SYNC_END else '1';
+  frame_tick <= '1' when hpos = H_TOTAL - 1 and vpos = V_ACT_END - 1 else '0';
+  hsync      <= '0' when hpos < H_SYNC else '1';
+  vsync      <= '0' when vpos < V_SYNC else '1';
 
   vga_counter : process(clk, rst_n)
   begin
     if rst_n = '0' then
-      -- Starta i synkpulsen: då kommer HSYNC/VSYNC först efter reset, precis
-      -- som i klassisk "sync först"-timing (krävs av t.ex. VHDLive:s VGA-vy)
-      hpos <= to_unsigned(H_SYNC_START, 10);
-      vpos <= to_unsigned(V_SYNC_START, 10);
+      hpos <= (others => '0');
+      vpos <= (others => '0');
     elsif rising_edge(clk) then
       if h_end = '1' then
         hpos <= (others => '0');
@@ -664,6 +665,8 @@ begin
   ---------------------------------------------------------------------------
   pixel_colour : process(hpos, vpos, distance, air, ui_in)
     variable vis      : boolean;
+    variable scr_x    : unsigned(9 downto 0);
+    variable scr_y    : unsigned(9 downto 0);
     variable lx       : unsigned(8 downto 0);
     variable ly       : unsigned(7 downto 0);
     variable alive    : boolean;
@@ -718,9 +721,12 @@ begin
     variable u        : integer range -512 to 511;
     variable v        : integer range -256 to 255;
   begin
-    vis   := hpos < H_ACTIVE and vpos < V_ACTIVE;
-    lx    := hpos(9 downto 1);
-    ly    := vpos(8 downto 1);
+    vis   := hpos >= H_ACT_START and hpos < H_ACT_END and
+             vpos >= V_ACT_START and vpos < V_ACT_END;
+    scr_x := hpos - H_ACT_START;
+    scr_y := vpos - V_ACT_START;
+    lx    := scr_x(9 downto 1);
+    ly    := scr_y(8 downto 1);
     alive := air /= AIR_DEAD;
     night := ui_in(6) = '1';
     hit   <= '0';
