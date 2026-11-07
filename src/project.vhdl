@@ -138,6 +138,10 @@ architecture rtl of tt_um_bouncing_ball is
   signal hpos:unsigned(9 downto 0); signal vpos:unsigned(9 downto 0);
   signal distance:unsigned(7 downto 0); signal air:unsigned(3 downto 0);
   signal h_end,frame_tick,hsync,vsync,hit,snd:std_logic;
+  signal hpos_stage1:unsigned(9 downto 0); signal vpos_stage1:unsigned(9 downto 0);
+  signal distance_stage1:unsigned(7 downto 0); signal air_stage1:unsigned(3 downto 0);
+  signal ui_in_stage1:std_logic_vector(7 downto 0);
+  signal hsync_stage1,vsync_stage1:std_logic;
   signal base_rgb_comb,object_rgb_comb,player_rgb_comb,late_rgb_comb:rgb_t;
   signal object_on_comb,player_on_comb,player_eye_comb,late_on_comb:std_logic;
   signal base_rgb_q,object_rgb_q,player_rgb_q,late_rgb_q:rgb_t;
@@ -182,7 +186,7 @@ begin
     end if;
   end process;
 
-  pixel_colour:process(hpos,vpos,distance,air,ui_in)
+  pixel_colour:process(hpos_stage1,vpos_stage1,distance_stage1,air_stage1,ui_in_stage1)
     variable vis,alive,night:boolean; variable lx:unsigned(8 downto 0); variable ly:unsigned(7 downto 0);
     variable col,obj_col,player_col,late_col:rgb_t; variable late_on:boolean;
     variable scroll:unsigned(7 downto 0);
@@ -200,27 +204,27 @@ begin
     variable tx9:unsigned(8 downto 0); variable tcol:integer range 0 to 7; variable glyph:std_logic_vector(4 downto 0);
     variable u:integer range -512 to 511; variable v:integer range -256 to 255; variable play_y2:integer range -31 to 31;
   begin
-    vis:=hpos>=H_ACTIVE_START and hpos<H_ACTIVE_END and
-         vpos>=V_ACTIVE_START and vpos<V_ACTIVE_END;
+        vis:=hpos_stage1>=H_ACTIVE_START and hpos_stage1<H_ACTIVE_END and
+          vpos_stage1>=V_ACTIVE_START and vpos_stage1<V_ACTIVE_END;
     if vis then
-      lx:=resize(shift_right(hpos-to_unsigned(H_ACTIVE_START,10),1),9);
-      ly:=resize(shift_right(vpos-to_unsigned(V_ACTIVE_START,10),1),8);
+       lx:=resize(shift_right(hpos_stage1-to_unsigned(H_ACTIVE_START,10),1),9);
+       ly:=resize(shift_right(vpos_stage1-to_unsigned(V_ACTIVE_START,10),1),8);
     else
       lx:=(others=>'0');
       ly:=(others=>'0');
     end if;
-    alive:=air/=AIR_DEAD; night:=ui_in(6)='1'; hit<='0';snd<='0';col:=C_BLACK;
+    alive:=air_stage1/=AIR_DEAD; night:=ui_in_stage1(6)='1'; hit<='0';snd<='0';col:=C_BLACK;
     obj_col:=C_BLACK;player_col:=C_BLACK;late_col:=C_BLACK;late_on:=false;
     ady:=0;ady2:=0;disc_hw:=0;disc2_hw:=0;in_disc:=false;in_disc2:=false;play_y2:=0;
-    if alive then scroll:=distance; else scroll:=(others=>'0'); end if;
+    if alive then scroll:=distance_stage1; else scroll:=(others=>'0'); end if;
 
-    h:=JUMP_H(to_integer(air & distance(0))); prow:=resize(ly,9)+resize(h,9)-PLAYER_TOP;
+    h:=JUMP_H(to_integer(air_stage1 & distance_stage1(0))); prow:=resize(ly,9)+resize(h,9)-PLAYER_TOP;
     pr:=prow(3 downto 0);pc:=lx(3 downto 0);in_pbox:=lx(8 downto 4)="00010" and prow<16;
-    if not alive or air/=0 then pose:="10"; elsif ui_in(3)='1' then pose:="11"; else pose:="0" & distance(2); end if;
-    prowbits:=player_row(ui_in(2),pose,pr);p_on:=in_pbox and prowbits(15-to_integer(pc))='1';
+    if not alive or air_stage1/=0 then pose:="10"; elsif ui_in_stage1(3)='1' then pose:="11"; else pose:="0" & distance_stage1(2); end if;
+    prowbits:=player_row(ui_in_stage1(2),pose,pr);p_on:=in_pbox and prowbits(15-to_integer(pc))='1';
     p_eye:=false;
     if in_pbox then
-      if ui_in(2)='0' then
+      if ui_in_stage1(2)='0' then
         if not alive then p_eye:=(pr=1 and pc=10) or ((pr=0 or pr=2) and (pc=9 or pc=11));
         elsif pose=3 then p_eye:=pr=9 and pc=11; else p_eye:=pr=1 and pc=10; end if;
       else
@@ -232,7 +236,7 @@ begin
     p_spot:=(pr(1 downto 0)+pc(1 downto 0))=0 and pr>=6 and pr<=12;
 
     wx:=resize(lx,10)+(scroll & "00");
-    entry:=TRACKS(to_integer(unsigned(ui_in(5 downto 4)) & wx(9 downto 8)));
+    entry:=TRACKS(to_integer(unsigned(ui_in_stage1(5 downto 4)) & wx(9 downto 8)));
     kind:=to_integer(unsigned(entry(5 downto 3)));tx:=to_integer(wx(4 downto 0));
     hyi:=to_integer(to_unsigned(GROUND_Y-1,8)-ly);o_on:=false;o_bird:=false;o_eye:=false;
     if alive and kind/=0 and wx(7 downto 5)=unsigned(entry(2 downto 0)) and ly<GROUND_Y then
@@ -244,21 +248,21 @@ begin
         when others=>
           if kind=5 then bb:=2; else bb:=12; end if;
           if tx<16 and hyi>=bb and hyi<bb+8 then
-            br:=bb+7-hyi;o_on:=BIRD_ROM(to_integer(distance(3) & to_unsigned(br,3)))(15-tx)='1';o_bird:=true;
-            o_eye:=tx=2 and ((distance(3)='0' and br=3) or (distance(3)='1' and br=2));
+            br:=bb+7-hyi;o_on:=BIRD_ROM(to_integer(distance_stage1(3) & to_unsigned(br,3)))(15-tx)='1';o_bird:=true;
+            o_eye:=tx=2 and ((distance_stage1(3)='0' and br=3) or (distance_stage1(3)='1' and br=2));
           end if;
       end case;
     end if;
-    if vis and alive and p_on and o_on and ui_in(0)='0' then hit<='1'; end if;
+    if vis and alive and p_on and o_on and ui_in_stage1(0)='0' then hit<='1'; end if;
 
     if vis then
-      if not alive and distance<3 then col:=C_WHITE;
+      if not alive and distance_stage1<3 then col:=C_WHITE;
       elsif night then
         if ly>=SKY_BAND_Y then col:=C_N_SKY2; else col:=C_N_SKY; end if;
         sy:='0' & ly(7 downto 3);
         sh:=(lx(8 downto 3)+sy+(sy(4 downto 0)&'0')) xor ('0'&lx(8 downto 4)) xor (sy(3 downto 0)&"00");
         if lx(2 downto 0)="011" and ly(2 downto 0)="101" and ly<SKY_BAND_Y and
-          (sh=37 or sh=11 or (sh=50 and distance(5)='1')) then col:=C_WHITE; end if;
+          (sh=37 or sh=11 or (sh=50 and distance_stage1(5)='1')) then col:=C_WHITE; end if;
       else col:=C_SKY; end if;
 
       dxi:=to_integer(lx)-272;dyi:=to_integer(ly)-32;
@@ -273,7 +277,7 @@ begin
         end if;
       end if;
 
-      cx:=lx+(distance & '0');
+      cx:=lx+(distance_stage1 & '0');
       if cx(6 downto 5)="01" then cyy:=ly-CLOUD_Y(to_integer(cx(8 downto 7)));
         if cyy<10 then ctx:=to_integer(cx(4 downto 0));cty:=to_integer(cyy(3 downto 0));
           if (cty>=6 and ctx>=1 and ctx<=30 and not(cty=9 and (ctx<3 or ctx>28))) or
@@ -305,7 +309,7 @@ begin
         if o_eye then obj_col:=C_BLACK;end if;
       end if;
       if p_on then
-        if ui_in(2)='0' then if night then player_col:=C_N_DINO;else player_col:=C_DINO;end if;
+        if ui_in_stage1(2)='0' then if night then player_col:=C_N_DINO;else player_col:=C_DINO;end if;
         elsif p_skin then player_col:=C_SKIN;elsif p_spot then player_col:=C_SHELL2;else player_col:=C_SHELL;end if;
       end if;
 
@@ -318,12 +322,12 @@ begin
           end if;
         end if;
         u:=to_integer(lx)-153;v:=to_integer(ly)-104;
-        if distance>=RESTART_DELAY and distance(4)='1' and u>=0 and u<14 and v>=0 and v<16 then
+        if distance_stage1>=RESTART_DELAY and distance_stage1(4)='1' and u>=0 and u<14 and v>=0 and v<16 then
           play_y2:=2*v-15;
           if play_y2>=u-15 and play_y2<=15-u then late_on:=true; end if;
         end if;
       end if;
-      if ui_in(0)='1' and ly>=20 and ly<40 and ((lx>=150 and lx<156) or (lx>=164 and lx<170)) then
+      if ui_in_stage1(0)='1' and ly>=20 and ly<40 and ((lx>=150 and lx<156) or (lx>=164 and lx<170)) then
         late_on:=true;
       end if;
     end if;
@@ -337,10 +341,10 @@ begin
     end if;
     if late_on then late_on_comb<='1';else late_on_comb<='0';end if;
     base_rgb_comb<=col;object_rgb_comb<=obj_col;player_rgb_comb<=player_col;late_rgb_comb<=late_col;
-    if ui_in(7)='0' and ui_in(0)='0' then
-      if alive then if air=1 then snd<=vpos(5);elsif air=2 then snd<=vpos(4);elsif air=3 then snd<=vpos(3);
-        elsif distance(7 downto 2)=0 then snd<=vpos(2);end if;
-      elsif distance<8 then snd<=vpos(4);elsif distance<16 then snd<=vpos(5);elsif distance<24 then snd<=vpos(6);end if;
+    if ui_in_stage1(7)='0' and ui_in_stage1(0)='0' then
+      if alive then if air_stage1=1 then snd<=vpos_stage1(5);elsif air_stage1=2 then snd<=vpos_stage1(4);elsif air_stage1=3 then snd<=vpos_stage1(3);
+        elsif distance_stage1(7 downto 2)=0 then snd<=vpos_stage1(2);end if;
+      elsif distance_stage1<8 then snd<=vpos_stage1(4);elsif distance_stage1<16 then snd<=vpos_stage1(5);elsif distance_stage1<24 then snd<=vpos_stage1(6);end if;
     end if;
   end process;
 
@@ -358,16 +362,22 @@ begin
   pixel_pipeline:process(clk,rst_n)
   begin
     if rst_n='0' then
+      hpos_stage1<=(others=>'0');vpos_stage1<=(others=>'0');
+      distance_stage1<=(others=>'0');air_stage1<=(others=>'0');ui_in_stage1<=(others=>'0');
+      hsync_stage1<='0';vsync_stage1<='0';
       base_rgb_q<=C_BLACK;object_rgb_q<=C_BLACK;player_rgb_q<=C_BLACK;late_rgb_q<=C_BLACK;
       object_on_q<='0';player_on_q<='0';player_eye_q<='0';late_on_q<='0';
       hsync_q<='0';vsync_q<='0';snd_q<='0';
       uo_out<=(others=>'0');uio_out<=(others=>'0');
     elsif rising_edge(clk) then
+      hpos_stage1<=hpos;vpos_stage1<=vpos;
+      distance_stage1<=distance;air_stage1<=air;ui_in_stage1<=ui_in;
+      hsync_stage1<=hsync;vsync_stage1<=vsync;
       base_rgb_q<=base_rgb_comb;object_rgb_q<=object_rgb_comb;
       player_rgb_q<=player_rgb_comb;late_rgb_q<=late_rgb_comb;
       object_on_q<=object_on_comb;player_on_q<=player_on_comb;
       player_eye_q<=player_eye_comb;late_on_q<=late_on_comb;
-      hsync_q<=hsync;vsync_q<=vsync;snd_q<=snd;
+      hsync_q<=hsync_stage1;vsync_q<=vsync_stage1;snd_q<=snd;
       uo_out<=hsync_q & rgb(0) & rgb(2) & rgb(4) & vsync_q & rgb(1) & rgb(3) & rgb(5);
       uio_out<=snd_q & "0000000";
     end if;
