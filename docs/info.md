@@ -9,12 +9,12 @@ You can also include images in this folder and reference them in the markdown. E
 
 ## How it works
 
-Explain how your project works
+Its a game about a dino/ turtle who jumps over catuses. compressed in 32 bits
 
 ## How to test
 
-Explain how to use your project
+by playing it and having fun. connetcting it to a vga and connecting it to a screen
 
 ## External hardware
 
-List external hardware used in your project (e.g. PMOD, LED display, etc), if any
+Inout vga and a screen
