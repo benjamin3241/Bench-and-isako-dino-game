@@ -586,8 +586,10 @@ begin
   vga_counter : process(clk, rst_n)
   begin
     if rst_n = '0' then
-      hpos <= (others => '0');
-      vpos <= (others => '0');
+      -- Starta i synkpulsen: då kommer HSYNC/VSYNC först efter reset, precis
+      -- som i klassisk "sync först"-timing (krävs av t.ex. VHDLive:s VGA-vy)
+      hpos <= to_unsigned(H_SYNC_START, 10);
+      vpos <= to_unsigned(V_SYNC_START, 10);
     elsif rising_edge(clk) then
       if h_end = '1' then
         hpos <= (others => '0');
