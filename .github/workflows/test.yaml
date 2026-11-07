@@ -38,6 +38,14 @@ jobs:
         shell: bash
         run: ./tt/tt_tool.py
 
+      - name: Show generated Verilog (debug)
+        if: always()
+        run: |
+          f=src/generated/project.v
+          wc -l $f
+          for n in 12 1309 1379 1381 2961 3058 3598; do echo "=== line $n"; sed -n "$((n-3)),$((n+2))p" $f; done
+          grep -n "assign" $f | head -5
+
       - name: Run tests
         run: |
           cd test
