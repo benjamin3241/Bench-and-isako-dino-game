@@ -136,7 +136,7 @@ architecture rtl of tt_um_bouncing_ball is
   end function;
 
   signal hpos:unsigned(9 downto 0); signal vpos:unsigned(9 downto 0);
-  signal dist:unsigned(7 downto 0); signal air:unsigned(3 downto 0);
+  signal distance:unsigned(7 downto 0); signal air:unsigned(3 downto 0);
   signal h_end,frame_tick,hsync,vsync,hit,snd:std_logic;
   signal rgb:rgb_t;
 begin
@@ -157,27 +157,27 @@ begin
 
   game_logic:process(clk,rst_n) variable jump_btn,duck_btn:boolean;
   begin
-    if rst_n='0' then dist<=(others=>'0');air<=(others=>'0');
+    if rst_n='0' then distance<=(others=>'0');air<=(others=>'0');
     elsif rising_edge(clk) then
       jump_btn:=ui_in(1)='1'; duck_btn:=ui_in(3)='1';
       if ui_in(0)='0' then
         if frame_tick='1' then
           if air=AIR_DEAD then
-            if dist/=255 then dist<=dist+1; end if;
-            if jump_btn and dist>=RESTART_DELAY then dist<=(others=>'0');air<=(others=>'0'); end if;
+            if distance/=255 then distance<=distance+1; end if;
+            if jump_btn and distance>=RESTART_DELAY then distance<=(others=>'0');air<=(others=>'0'); end if;
           else
-            dist<=dist+1;
+            distance<=distance+1;
             if air=0 then if jump_btn then air<=to_unsigned(1,4); end if;
             elsif air<=7 and (duck_btn or (not jump_btn and air>=4)) then air<=15-air;
-            elsif dist(0)='1' or duck_btn then if air=14 then air<=(others=>'0'); else air<=air+1; end if;
+            elsif distance(0)='1' or duck_btn then if air=14 then air<=(others=>'0'); else air<=air+1; end if;
             end if;
           end if;
-        elsif hit='1' and air/=AIR_DEAD then air<=to_unsigned(AIR_DEAD,4);dist<=(others=>'0'); end if;
+        elsif hit='1' and air/=AIR_DEAD then air<=to_unsigned(AIR_DEAD,4);distance<=(others=>'0'); end if;
       end if;
     end if;
   end process;
 
-  pixel_colour:process(hpos,vpos,dist,air,ui_in)
+  pixel_colour:process(hpos,vpos,distance,air,ui_in)
     variable vis,alive,night:boolean; variable lx:unsigned(8 downto 0); variable ly:unsigned(7 downto 0);
     variable col:rgb_t; variable scroll:unsigned(7 downto 0);
     variable h:unsigned(5 downto 0); variable prow:unsigned(8 downto 0);
@@ -205,11 +205,11 @@ begin
     end if;
     alive:=air/=AIR_DEAD; night:=ui_in(6)='1'; hit<='0';snd<='0';col:=C_BLACK;
     ady:=0;ady2:=0;disc_hw:=0;disc2_hw:=0;in_disc:=false;in_disc2:=false;play_y2:=0;
-    if alive then scroll:=dist; else scroll:=(others=>'0'); end if;
+    if alive then scroll:=distance; else scroll:=(others=>'0'); end if;
 
-    h:=JUMP_H(to_integer(air & dist(0))); prow:=resize(ly,9)+resize(h,9)-PLAYER_TOP;
+    h:=JUMP_H(to_integer(air & distance(0))); prow:=resize(ly,9)+resize(h,9)-PLAYER_TOP;
     pr:=prow(3 downto 0);pc:=lx(3 downto 0);in_pbox:=lx(8 downto 4)="00010" and prow<16;
-    if not alive or air/=0 then pose:="10"; elsif ui_in(3)='1' then pose:="11"; else pose:="0" & dist(2); end if;
+    if not alive or air/=0 then pose:="10"; elsif ui_in(3)='1' then pose:="11"; else pose:="0" & distance(2); end if;
     prowbits:=player_row(ui_in(2),pose,pr);p_on:=in_pbox and prowbits(15-to_integer(pc))='1';
     p_eye:=false;
     if in_pbox then
@@ -237,21 +237,21 @@ begin
         when others=>
           if kind=5 then bb:=2; else bb:=12; end if;
           if tx<16 and hyi>=bb and hyi<bb+8 then
-            br:=bb+7-hyi;o_on:=BIRD_ROM(to_integer(dist(3) & to_unsigned(br,3)))(15-tx)='1';o_bird:=true;
-            o_eye:=tx=2 and ((dist(3)='0' and br=3) or (dist(3)='1' and br=2));
+            br:=bb+7-hyi;o_on:=BIRD_ROM(to_integer(distance(3) & to_unsigned(br,3)))(15-tx)='1';o_bird:=true;
+            o_eye:=tx=2 and ((distance(3)='0' and br=3) or (distance(3)='1' and br=2));
           end if;
       end case;
     end if;
     if vis and alive and p_on and o_on and ui_in(0)='0' then hit<='1'; end if;
 
     if vis then
-      if not alive and dist<3 then col:=C_WHITE;
+      if not alive and distance<3 then col:=C_WHITE;
       elsif night then
         if ly>=SKY_BAND_Y then col:=C_N_SKY2; else col:=C_N_SKY; end if;
         sy:='0' & ly(7 downto 3);
         sh:=(lx(8 downto 3)+sy+(sy(4 downto 0)&'0')) xor ('0'&lx(8 downto 4)) xor (sy(3 downto 0)&"00");
         if lx(2 downto 0)="011" and ly(2 downto 0)="101" and ly<SKY_BAND_Y and
-          (sh=37 or sh=11 or (sh=50 and dist(5)='1')) then col:=C_WHITE; end if;
+          (sh=37 or sh=11 or (sh=50 and distance(5)='1')) then col:=C_WHITE; end if;
       else if ly>=SKY_BAND_Y then col:=C_SKY2; else col:=C_SKY; end if; end if;
 
       dxi:=to_integer(lx)-272;dyi:=to_integer(ly)-32;
@@ -265,7 +265,7 @@ begin
         elsif in_disc then col:=C_SUN; end if;
       end if;
 
-      cx:=lx+(dist & '0');
+      cx:=lx+(distance & '0');
       if cx(6 downto 5)="01" then cyy:=ly-CLOUD_Y(to_integer(cx(8 downto 7)));
         if cyy<10 then ctx:=to_integer(cx(4 downto 0));cty:=to_integer(cyy(3 downto 0));
           if (cty>=6 and ctx>=1 and ctx<=30 and not(cty=9 and (ctx<3 or ctx>28))) or
@@ -300,7 +300,7 @@ begin
         if ui_in(2)='0' then if night then col:=C_N_DINO;else col:=C_DINO;end if;
         elsif p_skin then col:=C_SKIN;elsif p_spot then col:=C_SHELL2;else col:=C_SHELL;end if;
       end if;
-      if p_eye then col:=C_BLACK;end if;
+      if p_eye then col:=C_BLACK;end if;test/results.
 
       if not alive then
         tx9:=lx-91;
@@ -311,7 +311,7 @@ begin
           end if;
         end if;
         u:=to_integer(lx)-153;v:=to_integer(ly)-104;
-        if dist>=RESTART_DELAY and dist(4)='1' and u>=0 and u<14 and v>=0 and v<16 then
+        if distance>=RESTART_DELAY and distance(4)='1' and u>=0 and u<14 and v>=0 and v<16 then
           play_y2:=2*v-15;
           if play_y2>=u-15 and play_y2<=15-u then if night then col:=C_WHITE;else col:=C_TEXT;end if;end if;
         end if;
@@ -323,8 +323,8 @@ begin
     rgb<=col;
     if ui_in(7)='0' and ui_in(0)='0' then
       if alive then if air=1 then snd<=vpos(5);elsif air=2 then snd<=vpos(4);elsif air=3 then snd<=vpos(3);
-        elsif dist(7 downto 2)=0 then snd<=vpos(2);end if;
-      elsif dist<8 then snd<=vpos(4);elsif dist<16 then snd<=vpos(5);elsif dist<24 then snd<=vpos(6);end if;
+        elsif distance(7 downto 2)=0 then snd<=vpos(2);end if;
+      elsif distance<8 then snd<=vpos(4);elsif distance<16 then snd<=vpos(5);elsif distance<24 then snd<=vpos(6);end if;
     end if;
   end process;
 
