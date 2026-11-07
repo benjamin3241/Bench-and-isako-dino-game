@@ -300,7 +300,7 @@ begin
         if ui_in(2)='0' then if night then col:=C_N_DINO;else col:=C_DINO;end if;
         elsif p_skin then col:=C_SKIN;elsif p_spot then col:=C_SHELL2;else col:=C_SHELL;end if;
       end if;
-      if p_eye then col:=C_BLACK;end if;test/results.
+      if p_eye then col:=C_BLACK;end if;
 
       if not alive then
         tx9:=lx-91;
