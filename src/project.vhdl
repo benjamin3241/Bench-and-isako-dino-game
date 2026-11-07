@@ -28,7 +28,7 @@ architecture rtl of tt_um_bouncing_ball is
 
   subtype rgb_t is std_logic_vector(5 downto 0);
   constant C_BLACK:rgb_t:="000000"; constant C_WHITE:rgb_t:="111111";
-  constant C_SKY:rgb_t:="011011"; constant C_SKY2:rgb_t:="011011";
+  constant C_SKY:rgb_t:="011011";
   constant C_CLOUD:rgb_t:="111111"; constant C_SUN:rgb_t:="111100";
   constant C_HILL:rgb_t:="011010"; constant C_LINE:rgb_t:="010100";
   constant C_SAND:rgb_t:="111001"; constant C_PEBBLE:rgb_t:="100100";
@@ -123,21 +123,26 @@ architecture rtl of tt_um_bouncing_ball is
 
   function cactus(tx:integer range 0 to 31; hy:integer range 0 to 255;
                   x0:integer range 3 to 24; big:boolean) return boolean is
-    variable h,a0,a1,b0,b1:integer range 0 to 31; variable px:boolean;
+    variable h,a0,a1,b0,b1:integer range 0 to 31;
+    variable stem,left_arm,right_arm:boolean;
   begin
     if big then h:=22;a0:=8;a1:=16;b0:=11;b1:=19; else h:=14;a0:=5;a1:=10;b0:=7;b1:=12; end if;
-    px:=false;
-    if tx>=x0 and tx<x0+4 and hy<h then px:=not(hy=h-1 and (tx=x0 or tx=x0+3)); end if;
-    if tx>=x0-3 and tx<x0-1 and hy>=a0 and hy<a1 then px:=true; end if;
-    if tx>=x0-3 and tx<x0 and hy>=a0 and hy<a0+2 then px:=true; end if;
-    if tx>=x0+5 and tx<x0+7 and hy>=b0 and hy<b1 then px:=true; end if;
-    if tx>=x0+4 and tx<x0+7 and hy>=b0 and hy<b0+2 then px:=true; end if;
-    return px;
+    stem:=tx>=x0 and tx<x0+4 and hy<h and not(hy=h-1 and (tx=x0 or tx=x0+3));
+    left_arm:=tx>=x0-3 and tx<x0 and hy>=a0 and
+              ((tx<x0-1 and hy<a1) or hy<a0+2);
+    right_arm:=tx>=x0+4 and tx<x0+7 and hy>=b0 and
+               ((tx>=x0+5 and hy<b1) or hy<b0+2);
+    return stem or left_arm or right_arm;
   end function;
 
   signal hpos:unsigned(9 downto 0); signal vpos:unsigned(9 downto 0);
   signal distance:unsigned(7 downto 0); signal air:unsigned(3 downto 0);
   signal h_end,frame_tick,hsync,vsync,hit,snd:std_logic;
+  signal base_rgb_comb,object_rgb_comb,player_rgb_comb,late_rgb_comb:rgb_t;
+  signal object_on_comb,player_on_comb,player_eye_comb,late_on_comb:std_logic;
+  signal base_rgb_q,object_rgb_q,player_rgb_q,late_rgb_q:rgb_t;
+  signal object_on_q,player_on_q,player_eye_q,late_on_q:std_logic;
+  signal hsync_q,vsync_q,snd_q:std_logic;
   signal rgb:rgb_t;
 begin
   -- Standard VGA timing: sync pulse first, then back porch and visible area.
@@ -179,7 +184,8 @@ begin
 
   pixel_colour:process(hpos,vpos,distance,air,ui_in)
     variable vis,alive,night:boolean; variable lx:unsigned(8 downto 0); variable ly:unsigned(7 downto 0);
-    variable col:rgb_t; variable scroll:unsigned(7 downto 0);
+    variable col,obj_col,player_col,late_col:rgb_t; variable late_on:boolean;
+    variable scroll:unsigned(7 downto 0);
     variable h:unsigned(5 downto 0); variable prow:unsigned(8 downto 0);
     variable pr,pc:unsigned(3 downto 0); variable pose:unsigned(1 downto 0); variable prowbits:row16_t;
     variable in_pbox,p_on,p_eye,p_skin,p_spot:boolean;
@@ -204,6 +210,7 @@ begin
       ly:=(others=>'0');
     end if;
     alive:=air/=AIR_DEAD; night:=ui_in(6)='1'; hit<='0';snd<='0';col:=C_BLACK;
+    obj_col:=C_BLACK;player_col:=C_BLACK;late_col:=C_BLACK;late_on:=false;
     ady:=0;ady2:=0;disc_hw:=0;disc2_hw:=0;in_disc:=false;in_disc2:=false;play_y2:=0;
     if alive then scroll:=distance; else scroll:=(others=>'0'); end if;
 
@@ -252,7 +259,7 @@ begin
         sh:=(lx(8 downto 3)+sy+(sy(4 downto 0)&'0')) xor ('0'&lx(8 downto 4)) xor (sy(3 downto 0)&"00");
         if lx(2 downto 0)="011" and ly(2 downto 0)="101" and ly<SKY_BAND_Y and
           (sh=37 or sh=11 or (sh=50 and distance(5)='1')) then col:=C_WHITE; end if;
-      else if ly>=SKY_BAND_Y then col:=C_SKY2; else col:=C_SKY; end if; end if;
+      else col:=C_SKY; end if;
 
       dxi:=to_integer(lx)-272;dyi:=to_integer(ly)-32;
       if dxi>-16 and dxi<16 and dyi>-16 and dyi<16 then
@@ -261,8 +268,9 @@ begin
         disc_hw:=to_integer(CIRCLE_HW(ady));disc2_hw:=to_integer(CIRCLE_HW(ady2));
         in_disc:=dxi> -disc_hw and dxi<disc_hw;
         in_disc2:=(dxi-6)> -disc2_hw and (dxi-6)<disc2_hw;
-        if night then if in_disc and not in_disc2 then col:=C_N_MOON; end if;
-        elsif in_disc then col:=C_SUN; end if;
+        if in_disc and (not night or not in_disc2) then
+          if night then col:=C_N_MOON; else col:=C_SUN; end if;
+        end if;
       end if;
 
       cx:=lx+(distance & '0');
@@ -292,35 +300,43 @@ begin
       end if;
 
       if o_on then
-        if o_bird then if night then col:=C_N_BIRD;else col:=C_BIRD;end if;
-        elsif night then col:=C_N_CACTUS;else col:=C_CACTUS;end if;
-        if o_eye then col:=C_BLACK;end if;
+        if o_bird then if night then obj_col:=C_N_BIRD;else obj_col:=C_BIRD;end if;
+        elsif night then obj_col:=C_N_CACTUS;else obj_col:=C_CACTUS;end if;
+        if o_eye then obj_col:=C_BLACK;end if;
       end if;
       if p_on then
-        if ui_in(2)='0' then if night then col:=C_N_DINO;else col:=C_DINO;end if;
-        elsif p_skin then col:=C_SKIN;elsif p_spot then col:=C_SHELL2;else col:=C_SHELL;end if;
+        if ui_in(2)='0' then if night then player_col:=C_N_DINO;else player_col:=C_DINO;end if;
+        elsif p_skin then player_col:=C_SKIN;elsif p_spot then player_col:=C_SHELL2;else player_col:=C_SHELL;end if;
       end if;
-      if p_eye then col:=C_BLACK;end if;
 
       if not alive then
         tx9:=lx-91;
         if ly(7 downto 4)="0101" and ly(3 downto 1)/="111" and tx9<144 then
           tcol:=to_integer(tx9(3 downto 1));
           if tcol<5 then glyph:=FONT_GO(to_integer(tx9(7 downto 4) & ly(3 downto 1)));
-            if glyph(4-tcol)='1' then if night then col:=C_WHITE;else col:=C_TEXT;end if;end if;
+            if glyph(4-tcol)='1' then late_on:=true; end if;
           end if;
         end if;
         u:=to_integer(lx)-153;v:=to_integer(ly)-104;
         if distance>=RESTART_DELAY and distance(4)='1' and u>=0 and u<14 and v>=0 and v<16 then
           play_y2:=2*v-15;
-          if play_y2>=u-15 and play_y2<=15-u then if night then col:=C_WHITE;else col:=C_TEXT;end if;end if;
+          if play_y2>=u-15 and play_y2<=15-u then late_on:=true; end if;
         end if;
       end if;
       if ui_in(0)='1' and ly>=20 and ly<40 and ((lx>=150 and lx<156) or (lx>=164 and lx<170)) then
-        if night then col:=C_WHITE;else col:=C_TEXT;end if;
+        late_on:=true;
       end if;
     end if;
-    rgb<=col;
+    if night then late_col:=C_WHITE;else late_col:=C_TEXT;end if;
+    if p_eye then player_eye_comb<='1';else player_eye_comb<='0';end if;
+    if vis then
+      if o_on then object_on_comb<='1';else object_on_comb<='0';end if;
+      if p_on then player_on_comb<='1';else player_on_comb<='0';end if;
+    else
+      object_on_comb<='0';player_on_comb<='0';player_eye_comb<='0';
+    end if;
+    if late_on then late_on_comb<='1';else late_on_comb<='0';end if;
+    base_rgb_comb<=col;object_rgb_comb<=obj_col;player_rgb_comb<=player_col;late_rgb_comb<=late_col;
     if ui_in(7)='0' and ui_in(0)='0' then
       if alive then if air=1 then snd<=vpos(5);elsif air=2 then snd<=vpos(4);elsif air=3 then snd<=vpos(3);
         elsif distance(7 downto 2)=0 then snd<=vpos(2);end if;
@@ -328,6 +344,33 @@ begin
     end if;
   end process;
 
-  uo_out<=hsync & rgb(0) & rgb(2) & rgb(4) & vsync & rgb(1) & rgb(3) & rgb(5);
-  uio_out<=snd & "0000000";uio_oe<="10000000";
+  color_select:process(base_rgb_q,object_rgb_q,player_rgb_q,late_rgb_q,
+                       object_on_q,player_on_q,player_eye_q,late_on_q)
+  begin
+    if late_on_q='1' then rgb<=late_rgb_q;
+    elsif player_eye_q='1' then rgb<=C_BLACK;
+    elsif player_on_q='1' then rgb<=player_rgb_q;
+    elsif object_on_q='1' then rgb<=object_rgb_q;
+    else rgb<=base_rgb_q;
+    end if;
+  end process;
+
+  pixel_pipeline:process(clk,rst_n)
+  begin
+    if rst_n='0' then
+      base_rgb_q<=C_BLACK;object_rgb_q<=C_BLACK;player_rgb_q<=C_BLACK;late_rgb_q<=C_BLACK;
+      object_on_q<='0';player_on_q<='0';player_eye_q<='0';late_on_q<='0';
+      hsync_q<='0';vsync_q<='0';snd_q<='0';
+      uo_out<=(others=>'0');uio_out<=(others=>'0');
+    elsif rising_edge(clk) then
+      base_rgb_q<=base_rgb_comb;object_rgb_q<=object_rgb_comb;
+      player_rgb_q<=player_rgb_comb;late_rgb_q<=late_rgb_comb;
+      object_on_q<=object_on_comb;player_on_q<=player_on_comb;
+      player_eye_q<=player_eye_comb;late_on_q<=late_on_comb;
+      hsync_q<=hsync;vsync_q<=vsync;snd_q<=snd;
+      uo_out<=hsync_q & rgb(0) & rgb(2) & rgb(4) & vsync_q & rgb(1) & rgb(3) & rgb(5);
+      uio_out<=snd_q & "0000000";
+    end if;
+  end process;
+  uio_oe<="10000000";
 end architecture;
