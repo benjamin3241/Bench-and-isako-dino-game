@@ -5,7 +5,7 @@
 SOURCE_FILES = project.vhdl
 
 # Toplevel name of your VHDL project
-COCOTB_TOPLEVEL = tt_um_bouncing_ball
+COCOTB_TOPLEVEL = tt_um_benjamin3241_dino
 
 # Common
 WAVES ?= 1
