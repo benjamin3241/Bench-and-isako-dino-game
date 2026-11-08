@@ -31,7 +31,7 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
-entity tt_um_benjamin3241_dino is
+entity tt_um_bouncing_ball is
   port (
     ui_in   : in  std_logic_vector(7 downto 0);
     uo_out  : out std_logic_vector(7 downto 0);
@@ -42,9 +42,9 @@ entity tt_um_benjamin3241_dino is
     clk     : in  std_logic;
     rst_n   : in  std_logic
   );
-end entity tt_um_benjamin3241_dino;
+end entity tt_um_bouncing_ball;
 
-architecture rtl of tt_um_benjamin3241_dino is
+architecture rtl of tt_um_bouncing_ball is
 
   ---------------------------------------------------------------------------
   -- VGA 640x480. Den synliga ytan ligger först (hpos 0..639, vpos 0..479),
